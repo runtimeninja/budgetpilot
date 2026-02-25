@@ -1,0 +1,30 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+.coverage/
+*.prof
+
+# Env / secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# Node / Next
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
