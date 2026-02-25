@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: budgetpilot-postgres
+    environment:
+      POSTGRES_USER: budgetpilot
+      POSTGRES_PASSWORD: budgetpilot
+      POSTGRES_DB: budgetpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - budgetpilot_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budgetpilot -d budgetpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: budgetpilot-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - budgetpilot_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  budgetpilot_pg:
+  budgetpilot_redis:
