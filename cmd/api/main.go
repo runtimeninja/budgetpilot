@@ -1,31 +1,63 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/runtimeninja/budgetpilot/internal/config"
+	"github.com/runtimeninja/budgetpilot/internal/observability"
+	"github.com/runtimeninja/budgetpilot/internal/router"
 )
 
 func main() {
-	addr := getenv("HTTP_ADDR", ":8080")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config load failed: %v", err)
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	logger := observability.NewLogger(cfg.Env)
+
+	h := router.New(router.Deps{
+		Env:    cfg.Env,
+		Logger: logger,
 	})
 
-	log.Printf("api listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server failed: %v", err)
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
-}
 
-func getenv(k, fallback string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		return fallback
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("server_start", "addr", cfg.HTTPAddr, "env", cfg.Env)
+		errCh <- srv.ListenAndServe()
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case <-ctx.Done():
+		logger.Info("shutdown_signal_received")
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			logger.Error("server_failed", "error", err)
+			os.Exit(1)
+		}
 	}
-	return v
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("shutdown_failed", "error", err)
+	} else {
+		logger.Info("shutdown_complete")
+	}
 }
